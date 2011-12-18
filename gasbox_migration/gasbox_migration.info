@@ -1,0 +1,12 @@
+name = "Importa listini"
+description = "Importa i prodotti da un CSV"
+package = Gasbox
+
+dependencies[] = migrate
+
+files[] = gasbox_migrattion.inc
+
+dependencies[] = migrate_ui
+
+version = "7.x-1.0"
+core = 7.x

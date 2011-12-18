@@ -1,0 +1,8 @@
+name = Gestione Prodotti
+description = Mette a dsiposizione funzionalità aggiuntive per la gestione dei prodotti, come l'importazione
+core = 7.x
+package = Gasbox
+
+
+version = "7.x-1.0-alpha"
+project = "gasbox"

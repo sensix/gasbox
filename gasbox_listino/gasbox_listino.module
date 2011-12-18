@@ -1,0 +1,33 @@
+<?php 
+
+
+function gasbox_listino_node_prepare($node){
+	if($node->type == 'listino_ordine'){
+		$chunks = explode("/",$_GET['q']);
+		$prodotti_nids = explode(",",$chunks[count($chunks) - 1]);
+		$node->title = !empty($node->title)? $node->title : "lista_" . time();	
+		foreach($prodotti_nids as $nid){
+			$node->field_ref_prodotti['und'][] = array('nid' => $nid);
+		}
+	}
+}
+
+/**
+ * 
+ * Aggiunge un link per creare un ordine da questa lista
+ * @param $node
+ */
+function gasbox_listino_node_view($node){
+  if($node->type == 'listino_ordine'){
+    $button_ordina = array(
+      '#type' => 'button',
+      '#value' => 'Ordina',
+    );
+    $node->content['button_ordina'] = array(
+      '#markup' => l('Fai l\'ordine','node/'.$node->nid.'/ordine'),
+      '#weight' => 1000,
+    );
+  }
+}
+
+

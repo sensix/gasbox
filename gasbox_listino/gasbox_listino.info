@@ -1,0 +1,8 @@
+name = Gasbox Listino
+description = Consente di creare listini ordini
+core = 7.x
+package = Gasbox
+
+
+version = "7.x-1.0-alpha"
+project = "gasbox"

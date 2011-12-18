@@ -1,0 +1,8 @@
+name = Gasbox Ordine
+description = Consente agli utenti di fare l'ordine
+core = 7.x
+package = Gasbox
+
+
+version = "7.x-1.0-alpha"
+project = "gasbox"

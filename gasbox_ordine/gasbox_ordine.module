@@ -1,0 +1,142 @@
+<?php 
+
+function gasbox_ordine_permissions(){
+  $prem = array();
+  $perm['place a order'] = array(
+    'title' => 'Fai un ordine',
+    'description' => 'Consenti all\'utente di fare un ordine di prodotti'
+  );
+  return $perm;
+}
+
+function gasbox_ordine_menu(){
+  $items = array();
+  $items['node/%node/ordine'] = array(
+	'title' => t('Fai l\'ordine'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gasbox_ordine_form', 1),
+    'access arguments' => array('access content'),
+  	'type' => MENU_CALLBACK,
+	);
+  return $items;
+}
+
+function gasbox_ordine_theme(){
+  $themes = array();
+  $themes['gasbox_ordine_theme'] = array('render element' => 'form');
+  return $themes;
+}
+
+function gasbox_ordine_form($form, &$form_state, $node){
+  global $user;
+  $qtty = _gasbox_ordine_get_qtty($user->uid, $node->nid);
+  $form = array();
+  $form['prodotti'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Prodotti',
+    '#tree' => true,
+  );
+  $form['prodotti']['#theme'] = 'gasbox_ordine_theme';
+  foreach($node->field_ref_prodotti['und'] as $n){
+    $prodotto = node_load($n['nid']);
+    $form['prodotti'][$prodotto->nid]['prodotto'] = array('#type' => 'value', '#value' => $prodotto);
+    $form['prodotti'][$prodotto->nid]['qtty'] = array(
+      '#type' => 'textfield',
+      '#default_value' => !empty($qtty[$prodotto->nid])?$qtty[$prodotto->nid]:0,
+      '#size' => 2
+    );
+  }
+  $form['salva'] = array(
+    '#type' => 'submit',
+    '#value' => 'Salva senza inviare',
+    '#description' => 'Salva l\'ordine senza inviare',
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Fai l\'ordine',
+  );
+  $form['#nid'] = $node->nid;
+  return $form;
+}
+
+function gasbox_ordine_form_submit($form, &$form_state){
+  global $user;
+
+  if($form_state['clicked_button']['#id'] == 'edit-salva'){
+    // esiste già un ordine associato a questo listino?
+    $listino_ordine_id = $form['#nid'];
+    $ordine = _gasbox_ordine_get_ordine($user->uid, $listino_ordine_id);
+    if(FALSE == $ordine){
+      // se non esiste ancora l'ordine lo creiamo
+      $ordine = new stdClass();
+      $ordine->type = 'ordine';
+      $ordine->title = 'ordine_' . time();
+      $ordine->uid = $user->uid; 
+      $ordine->field_ref_listino_ordine['und'][0] = array(
+        'target_id' =>$listino_ordine_id,
+        'target_type' => 'node',
+      );
+      node_save($ordine);
+    }
+    else{
+      // se esiste resettiamo le quantità salvate in precedenza prima di salvare le nuove
+      $sql = "DELETE from {gasbox_ordine} WHERE ordine_id = :ordine_id and listino_ordine_id = :listino_ordine_id";
+      db_query($sql, array(':ordine_id' => $ordine->nid, ':listino_ordine_id' => $listino_ordine_id));
+    }
+    // scrivi le quantità
+    $row = new stdClass();
+    foreach($form_state['values']['prodotti'] as $item){
+      $row->ordine_id = $ordine->nid;
+      $row->listino_ordine_id = $listino_ordine_id;
+      $row->prodotto_id = $item['prodotto']->nid;
+      $row->qty = $item['qtty'];
+      drupal_write_record('gasbox_ordine', $row);
+    }
+    
+    drupal_set_message('Ordine salvato');
+  }
+}
+
+function theme_gasbox_ordine_theme($variables){
+  $form = $variables['form'];
+  $header = array(t('Prodotto'), t('Prezzo'), t('Quantità'));
+  $rows = array();
+  foreach (element_children($form) as $key) {
+    $row = array();
+    $prodotto = $form[$key]['prodotto']['#value'];
+    $row[] = $prodotto->title;
+    $row[] = $prodotto->field_prezzo['und'][0]['value'];
+    $row[] = drupal_render($form[$key]['qtty']);
+    $rows[] = $row;
+  }
+  $output = theme('table', array('header' => $header, 'rows' => $rows));
+  $output .= drupal_render_children($form);
+  return $output;
+}
+
+function _gasbox_ordine_get_qtty($uid, $listino_ordine_id){
+  $sql = "select * from {field_data_field_ref_listino_ordine} ref
+join {node} on node.nid = ref.entity_id
+join {gasbox_ordine} ordine on ordine.listino_ordine_id = ref.field_ref_listino_ordine_target_id
+where uid = :uid and ref.field_ref_listino_ordine_target_id = :listino_ordine_id";
+  $result = db_query($sql, array(':uid' => $uid, 'listino_ordine_id' => $listino_ordine_id));
+  $items = $result->fetchAll();
+  $rows = array();
+  foreach($items as $item){
+    $rows[$item->prodotto_id] = $item->qty;
+  }
+  return $rows; 
+}
+
+function _gasbox_ordine_get_ordine($uid, $listino_ordine_id){
+  $ordine = false;
+  $sql = "select * from field_data_field_ref_listino_ordine ref
+join node on node.nid = ref.entity_id
+where uid = :uid and ref.field_ref_listino_ordine_target_id = :listino_ordine_id";
+  $result = db_query($sql, array(':uid' => $uid, ':listino_ordine_id' => $listino_ordine_id));
+  $entity = $result->fetchObject();
+  if(isset($entity->entity_id)){
+    $ordine = node_load($entity->entity_id);
+  }
+  return $ordine;  
+}

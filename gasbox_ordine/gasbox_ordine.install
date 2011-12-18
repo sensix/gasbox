@@ -1,0 +1,34 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function gasbox_ordine_schema() {
+  $schema['gasbox_ordine'] = array(
+    'fields' => array(
+      'ordine_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'id del nodo ordine',
+      ),
+      'listino_ordine_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'id del nodo listino ordine',
+      ),
+      'prodotto_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'description' => 'id del nodo prodotto',
+      ),
+      'qty' => array(
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => 'qunatitˆ da ordinare',
+      ),
+   ),
+   'primary key' => array('ordine_id', 'prodotto_id'),
+   );
+   return $schema;
+}
