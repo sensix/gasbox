@@ -1,0 +1,172 @@
+<?php 
+/**
+ * 
+ * Implements hook_permission
+ */
+function gasbox_products_permission(){
+  return array(
+    'importa prodotti' => array(
+      'title' => 'Importa prodotti',
+      'description' => 'Consente di importare i prodotti da una tabella precaricata'
+    ),
+  );
+}
+
+/**
+ * 
+ * Implements hook_menu
+ */
+function gasbox_products_menu(){
+  $items =  array();
+  $items['gasbox/prodotti/importa']= array(
+    'title' => 'Importa prodotti',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gasbox_products_importa_form'),
+    'access arguments' => array('importa prodotti'),
+    'type' => MENU_CALLBACK
+  );
+  
+  return $items;
+}
+
+/**
+ * 
+ * A form to import products from a csv file source
+ */
+function gasbox_products_importa_form(){
+  $form['#attributes'] = array('enctype' => "multipart/form-data");
+  $form['prodotti'] = array(
+    '#type' => 'file',
+    '#title' => t('Choose a file'),
+    '#title_display' => 'invisible',
+    '#size' => 22,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+   	'#value' => 'Importa!!',
+  );
+  return $form;
+}
+
+function gasbox_products_importa_form_submit($form, &$form_state){
+  if($form_state['clicked_button']['#id'] == 'edit-submit'){
+
+    $filepath = 'public://import/';
+    file_prepare_directory($filepath, FILE_CREATE_DIRECTORY);
+    $file = file_save_upload('prodotti', array('file_validate_extensions' => array()));
+    $lines = file($file->uri);
+    $count_inserted = $count_updated = 0;
+    $skipped = array();
+    $prodotto = new stdClass();
+    
+    foreach($lines as $line){
+      $col = explode(";", $line);
+      //build the product object    
+      $prodotto->codice = trim($col[0]);
+      $prodotto->title = $col[1];
+      $prodotto->confezione = ($col[2] != '') ? $col[2] : 1;
+      $prodotto->formato = $col[3];
+      $prodotto->fornitore = _gasbox_products_get_fornitore_nid(trim($col[4]));
+      $prodotto->note = $col[5];
+      $prezzo = str_replace(',', '.', $col[6]);
+      $prodotto->prezzo = number_format((float)$prezzo, 2, '.', '');
+      $prodotto->note = $col[7];
+      $prodotto->categoria = _gasbox_products_get_categoria(str_ireplace("\n","", trim($col[8])));
+      //verifica se il prodotto  giˆ presente dal codice
+      $query = new EntityFieldQuery;
+      $result = $query
+        ->entityCondition('entity_type', 'node')
+        ->entityCondition('bundle', 'prodotto')
+        ->fieldCondition('field_code', 'value', $prodotto->codice, '=')
+        ->execute();
+      
+      if(!empty($result['node'])){
+        $nids = array_keys($result['node']);
+        _gasbox_products_update_node($nids[0], $prodotto);
+        $count_updated++;
+      }
+      else{
+        if(!empty($prodotto->title) && !empty($prodotto->fornitore) && !empty($prodotto->categoria)){
+          _gasbox_products_insert_node($prodotto);
+          $count_inserted++;
+        }
+        else{
+          $skipped[] = $prodotto->codice;
+        }
+      }
+    }
+    drupal_set_message( $count_inserted . ' prodotti importati correttamente');
+    drupal_set_message( $count_updated . ' prodotti aggiornati correttamente');
+    drupal_set_message('prodotti non inseriti ' .count($skipped) . ': ' . implode(" ", $skipped), 'warning');
+  }
+}
+
+function _gasbox_products_get_fornitore_nid($title){
+  $result = db_query("SELECT nid FROM {node} WHERE type = :TYPE and title = :TITLE",
+    array(':TYPE' => 'fornitore', ':TITLE' => $title));
+  $ret = $result->fetchObject();
+  return isset($ret->nid)?$ret->nid:null;  
+}
+
+/**
+ * 
+ * Se esiste il term ritorna il tid altrimenti ritorna false
+ * @param unknown_type $name
+ */
+function _gasbox_products_get_categoria($name){
+  $terms = taxonomy_get_term_by_name($name);
+  $categorie = array();
+  foreach($terms as $tid => $term){
+    $categorie[] = $tid;
+  }
+  return isset($categorie[0])?$categorie[0]:false;
+}
+
+function _gasbox_products_update_node($nid, $prodotto){
+  $node = node_load($nid);
+  _gasbox_products_node_prepare($node, $prodotto);
+  // SALVA IL NODO
+  $node = node_submit($node);
+  node_save($node);
+}
+
+
+function _gasbox_products_insert_node($prodotto){
+  global $user;
+  
+  $node = new stdClass();
+  $node->title = $prodotto->title;
+  $node->type = "prodotto";
+  $node->status = 1;
+  $node->promote = 0;
+  $node->sticky = 0;
+  $node->uid = $user->uid;
+  $node->language = LANGUAGE_NONE;
+  //node_object_prepare($node);
+  
+  $node->body[$node->language][0]['value']   = '';
+  $node->body[$node->language][0]['summary'] = '';
+  $node->body[$node->language][0]['format']  = 'filterd_html';
+  
+  _gasbox_products_node_prepare($node, $prodotto);
+
+  // SALVA IL NODO
+  $node = node_submit($node);
+  node_save($node);
+}
+
+function _gasbox_products_node_prepare(&$node, $prodotto){
+  $node->field_categoria[$node->language][0]['tid'] = $prodotto->categoria;
+  $node->field_code[$node->language][0]['value'] = $prodotto->codice;
+  $node->field_confezione[$node->language][0]['value'] = $prodotto->confezione;
+  $node->field_formato_confezione[$node->language][0]['value'] = $prodotto->formato;
+  //$node->field_iva[$node->language][0]['value'] = $iva;
+  $node->field_note[$node->language][0]['value'] = $prodotto->note;
+  $node->field_prezzo[$node->language][0]['value'] = $prodotto->prezzo;
+  //$node->field_certificazione[$node->language][0]['value'] = array();
+  //$node->field_criteri_scelta[$node->language][0]['value'] = array();
+  $node->field_ref_fornitore[$node->language][0]['nid'] = $prodotto->fornitore;
+  //$node->group_audience = array();
+}
+
+?>
